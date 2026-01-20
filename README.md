@@ -1,260 +1,81 @@
-# Immich on macOS using Colima + External SSD
+# Immich Setup (Mac + Colima + External Drive)
 
-This repository provides a **stable, reproducible, and portable** way to run **Immich** on **macOS** using **Colima** and an **external SSD**, without Docker Desktop.
+This repository contains the configuration for a self-hosted Immich instance running on macOS using Colima and an external SandDisk drive for photo storage.
+## 🚀 Quick Start
+#### 1. Initialize Colima
 
-It is designed specifically to avoid common macOS + Docker filesystem issues.
+Since the photo library is on an external drive, you must start Colima with the /Volumes folder mounted and writable. Run this command on your Mac terminal:
+Bash
 
----
+colima start --mount /Volumes:w
 
-## What this setup does
+#### 2. Prepare Directory Permissions
 
-- Runs **Immich** on macOS using **Colima**
-- Stores **photos, videos, thumbnails, and encoded media** on an **external SSD**
-- Runs **Postgres inside the Colima VM** using a Docker named volume (for stability)
-- Works across multiple Macs with the same external SSD
-- No Docker Desktop required
-- Postgres runs inside Colima using a named Docker volume
+Inside the Colima VM, the folder must be accessible by the Docker containers.
+Bash
 
----
+colima ssh "sudo mkdir -p /Volumes/SandDisk/immich/library && sudo chmod -R 777 /Volumes/SandDisk/immich"
 
-## Architecture Overview (Important)
-
-| Component | Location | Reason |
-|--------|---------|------|
-| Photos & Videos | External SSD | Large, portable storage |
-| Thumbnails & Encoded Media | External SSD | Same lifecycle as media |
-| Postgres Database | Docker named volume (inside Colima VM) | Required for stability |
-| Colima VM | Internal disk | Disposable |
-| Setup scripts | GitHub repository | Reproducible setup |
-
----
-
-## Why Postgres is NOT on the external SSD
-
-On macOS, Colima mounts host directories into the VM using **sshfs / virtiofs**.
-
-While this works well for **media files**, it does **not** work reliably for **Postgres**.
-
-### Reasons:
-- Postgres requires strict POSIX ownership semantics (`chown`, `fchown`)
-- sshfs does not fully support these operations
-- This causes restart loops, permission errors, and corruption risk
-
-### Correct approach:
-- Media → external SSD
-- Postgres → Docker named volume inside the VM
-
-This is **intentional and required** for a stable setup.
-
----
-
-## Requirements
-
-- macOS
-- Homebrew
-- External SSD formatted as **APFS**
-
----
-
-## First-time setup
-
-### 1. Install required tools
-
+#### 3. Launch Immich
 ```bash
-brew install colima docker qemu
+docker compose up -d
 ```
 
-### 2. Clone the repository
 
+Access the dashboard at: http://localhost:2283
+📂 File Structure
+.env
 ```bash
-git clone https://github.com/kumaraman444/immich-setup.git
-cd immich-setup
+IMMICH_VERSION=release
 ```
 
-### 3. Make scripts executable (one-time)
+# Path verified inside Colima VM
+UPLOAD_LOCATION=/Volumes/SandDisk/immich/library
 
+# Database credentials
+DB_PASSWORD=postgres
+DB_USERNAME=postgres
+DB_DATABASE_NAME=immich
 ```bash
-chmod +x scripts/*.sh
+docker-compose.yml
 ```
 
-### 4. Create environment file
+Includes the IMMICH_DISABLE_CHOWN: "true" flag to prevent permission errors common with external drives on macOS.
+## 🔄 Migration Guide (Moving to a New Mac)
 
+To move this setup to a different computer while keeping all your users, albums, and faces:
+#### Phase 1: On the Old Mac
+
+Back up the database to your SandDisk:
+    
 ```bash
-cp .env.example .env
+docker exec -t immich_postgres pg_dumpall --clean --if-exists --username=postgres | gzip > /Volumes/SandDisk/immich/immich-db-backup.sql.gz
 ```
-#### Edit only if your disk name differs:
+Copy your config files (.env and docker-compose.yml) to the SandDisk or a cloud drive.
+
+#### Phase 2: On the New Mac
+
+* Install Colima & Docker.
+* Plug in the SandDisk.
+* Start Colima with the volume mount: colima start --mount /Volumes:w.
+* Place your config files in a new folder and run docker compose up -d.
+
+Restore the database:
 ```bash
-DISK_NAME=SandDisk
+gunzip < /Volumes/SandDisk/immich/immich-db-backup.sql.gz | docker exec -i immich_postgres psql --username=postgres
 ```
 
 
-### 5. Run scripts in order (IMPORTANT)
-
+Restart the containers:
 ```bash
-git clone https://github.com/kumaraman444/immich-setup.git
-cd immich-setup
+    docker compose restart
 ```
+## 🛠 Troubleshooting
 
+    Storage reporting 57 TiB: This is a cosmetic bug in Colima's file-sharing system. It does not affect actual storage.
 
-### 2. Clone the repository
+    Permission Denied: Run the chmod -R 777 command inside colima ssh again.
 
-```bash
-./scripts/00-check-prereqs.sh
-./scripts/01-start-colima.sh
-./scripts/02-verify-mount.sh
-./scripts/03-init-storage.sh   # run only on first setup
-./scripts/04-start-immich.sh
-```
+    Database failing: Ensure the postgres-data volume is on the Mac's internal drive (SSD) for performance.
 
-Open Immich in your browser:
-```bash
-http://localhost:2283
-```
-
-## Verifying the setup
-### Check media is on the external SSD
-```bash
-docker exec immich_server ls /data
-```
-Should match:
-
-```bash
-ls /Volumes/SandDisk/colima-share/immich/library
-```
-Upload a photo and verify disk usage increases:
-```bash
-df -h /Volumes/SandDisk
-```
-
-
-## Check Postgres is healthy
-
-```bash 
-docker ps | grep immich_postgres
-```
-
-### Troubleshooting & Notes
-#### If Postgres keeps restarting
-
-Ensure `docker-compose.yaml` uses a named volume:
-```bash
-volumes:
-  - postgres-data:/var/lib/postgresql/data
-```
-❌ Do NOT mount Postgres to /mnt/sandisk.
-
-## Database Backup & Restore
-Since Postgres runs inside a Docker named volume, backups are essential.
-### Backup the database to the external SSD
-```bash
-./scripts/backup-db.sh
-```
-#### Backups are stored at::
-```bash
-./scripts/backup-db.sh
-```
-
-## Health Checks
-### Run a full health check
-```bash
-./scripts/health-check.sh
-```
-#### Checks:
-
-* Docker containers
-* Colima status
-* SSD mount
-* VM mount
-* Media access
-
-### How to check disk mounts
-Inside the Colima VM:
-
-```bash
-colima ssh
-ls /mnt/sandisk
-exit
-```
-
-Inside Docker:
-```bash
-docker exec immich_server ls /data
-```
-On macOS:
-```bash
-ls /Volumes/SandDisk
-```
-All three should be consistent.
-
-## MacOS Finder quirks (/Volumes)
-
-#### macOS may leave stale folders under /Volumes even after a disk is ejected.
-
-### Source of truth:
-
-```bash
-diskutil list
-```
-
-If the disk does not appear there, it is already ejected — even if /Volumes/SandDisk exists.
-
-Stale folders can be safely removed:
-
-```bash
-sudo rm -rf /Volumes/SandDisk
-```
-
-## Safely stopping and ejecting the SSD
-
-### Always stop services before unplugging the disk.
-
-```bash
-./scripts/stop-all.sh
-```
-(Optional check):
-```bash
-lsof | grep /Volumes/SandDisk
-```
-Eject safely:
-
-```bash
-diskutil list
-```
-
-
-# Migrating to another Mac
-
-1. Install Homebrew
-2. Install dependencies:
-```bash
-brew install colima docker qemu
-```
-3. Plug in the external SSD
-4. Clone this repository
-5. Grant Full Disk Access to:
-    * Terminal
-    * Docker
-    * colima
-    * sshfs
-    * qemu-system-aarch64
-
-Run:
-
-```bash
-./scripts/01-start-colima.sh
-./scripts/02-verify-mount.sh
-./scripts/04-start-immich.sh
-```
-
-Media appears immediately; database starts cleanly.
-
-## Key takeaways
-* External SSD is for media only
-* Postgres must run inside the VM
-* This setup avoids macOS filesystem bugs
-* Designed for stability and portability
-
-
-## Disclaimer
-This setup reflects real-world macOS constraints, not theoretical Docker behavior.
-It prioritizes data safety and reliability over shortcuts.
+For a visual walkthrough on managing these database dumps and understanding how Postgres handles users during a move, you can check out this Immich backup and restore guide. This video is helpful because it explains the specific pg_dumpall logic used in your migration process.
