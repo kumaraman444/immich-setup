@@ -1,2 +1,19 @@
-# immich-setup
-It is a step by step setup of immich in our local mac hardware. So, that existing external harddisk drive can work on the go in any mac system
+# Immich on macOS using Colima + External SSD
+
+## What this does
+- Runs Immich on macOS
+- Stores photos + Postgres on an external SSD
+- Fully portable across Macs
+- No Docker Desktop required
+
+## Requirements
+- macOS
+- Homebrew
+- External APFS disk
+
+## First-time setup
+
+### 1. Install tools
+```bash
+brew install colima docker
+brew install qemu
