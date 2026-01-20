@@ -17,3 +17,10 @@
 ```bash
 brew install colima docker
 brew install qemu
+```
+
+## Note:
+
+* What to do if Postgres restarts (confirm named volume setup)
+* How to check disk mounts (colima ssh && ls /mnt/sandisk)
+* macOS Finder quirks (/Volumes showing stale folders)
