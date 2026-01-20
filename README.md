@@ -13,6 +13,7 @@ It is designed specifically to avoid common macOS + Docker filesystem issues.
 - Runs **Postgres inside the Colima VM** using a Docker named volume (for stability)
 - Works across multiple Macs with the same external SSD
 - No Docker Desktop required
+- Postgres runs inside Colima using a named Docker volume
 
 ---
 
@@ -142,6 +143,30 @@ volumes:
 ```
 ❌ Do NOT mount Postgres to /mnt/sandisk.
 
+## Database Backup & Restore
+Since Postgres runs inside a Docker named volume, backups are essential.
+### Backup the database to the external SSD
+```bash
+./scripts/backup-db.sh
+```
+#### Backups are stored at::
+```bash
+./scripts/backup-db.sh
+```
+
+## Health Checks
+### Run a full health check
+```bash
+./scripts/health-check.sh
+```
+#### Checks:
+
+* Docker containers
+* Colima status
+* SSD mount
+* VM mount
+* Media access
+
 ### How to check disk mounts
 Inside the Colima VM:
 
@@ -194,7 +219,6 @@ Eject safely:
 
 ```bash
 diskutil list
-diskutil eject /dev/diskX
 ```
 
 
