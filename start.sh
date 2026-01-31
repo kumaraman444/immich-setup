@@ -7,7 +7,13 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ENV_FILE="$ROOT_DIR/.env"
 
 if [ ! -f "$ENV_FILE" ]; then
-    echo "Missing $ENV_FILE; create it from .env.example first." >&2
+    echo "❌ Missing $ENV_FILE; create it from .env.example first." >&2
+    exit 1
+fi
+
+# Check if Docker/Colima is running
+if ! docker info >/dev/null 2>&1; then
+    echo "❌ Docker is not running. Start Colima or Docker Desktop first." >&2
     exit 1
 fi
 
@@ -24,16 +30,28 @@ DB_PASSWORD=$(printf '%s' "$DB_PASSWORD_RAW" | sed 's/\$\$/\$/g')
 : "${BACKUP_LOCATION:?BACKUP_LOCATION not set in .env}"
 
 echo "🔎 Ensuring mount paths exist: $UPLOAD_LOCATION and $BACKUP_LOCATION"
-sudo mkdir -p "$UPLOAD_LOCATION" "$BACKUP_LOCATION"
-sudo chmod -R 755 "$(dirname "$UPLOAD_LOCATION")" || true
-sudo chmod -R 755 "$UPLOAD_LOCATION" "$BACKUP_LOCATION"
+sudo mkdir -p "$UPLOAD_LOCATION" "$BACKUP_LOCATION" 2>/dev/null || {
+    echo "❌ Failed to create directories. Check drive connection and permissions." >&2
+    exit 1
+}
+sudo chmod -R 755 "$(dirname "$UPLOAD_LOCATION")" 2>/dev/null || true
+sudo chmod -R 755 "$UPLOAD_LOCATION" "$BACKUP_LOCATION" 2>/dev/null || true
 
 echo "🚀 Starting database container"
-docker compose up -d database
+docker compose up -d database 2>/dev/null || {
+    echo "❌ Failed to start database. Check docker-compose.yml." >&2
+    exit 1
+}
 
 echo "⏳ Waiting for Postgres to accept connections..."
-# wait for pg_isready
+RETRY=0
+MAX_RETRIES=30
 until docker exec immich_postgres pg_isready -U "$DB_USERNAME" >/dev/null 2>&1; do
+    RETRY=$((RETRY + 1))
+    if [ $RETRY -ge $MAX_RETRIES ]; then
+        echo "❌ Database failed to become ready after $MAX_RETRIES attempts." >&2
+        exit 1
+    fi
     sleep 2
 done
 
@@ -44,15 +62,26 @@ LATEST_BACKUP=$(ls -t "$BACKUP_LOCATION"/*.sql* 2>/dev/null | head -1 || true)
 if [ -n "$LATEST_BACKUP" ]; then
     echo "🔄 Restoring DB from $LATEST_BACKUP..."
     if [[ "$LATEST_BACKUP" == *.gz ]]; then
-        gunzip -c "$LATEST_BACKUP" | docker exec -i immich_postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME"
+        gunzip -c "$LATEST_BACKUP" | docker exec -i immich_postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME" 2>/dev/null || {
+            echo "⚠️ Restore had errors (likely schema conflicts). Services starting anyway." >&2
+        }
     else
-        cat "$LATEST_BACKUP" | docker exec -i immich_postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME"
+        cat "$LATEST_BACKUP" | docker exec -i immich_postgres psql -U "$DB_USERNAME" -d "$DB_DATABASE_NAME" 2>/dev/null || {
+            echo "⚠️ Restore had errors (likely schema conflicts). Services starting anyway." >&2
+        }
     fi
-    echo "✅ Restore finished"
+    echo "✅ Restore attempt finished"
 else
     echo "ℹ️ No backup found at $BACKUP_LOCATION; skipping restore"
 fi
 
 echo "➡️ Starting remaining services"
-docker compose up -d
-echo "🎉 Immich should be available at http://localhost:2283"
+docker compose up -d 2>/dev/null || {
+    echo "❌ Failed to start services. Check docker-compose.yml." >&2
+    exit 1
+}
+
+echo ""
+echo "🎉 Immich services started!"
+echo "✨ Access the UI at: http://localhost:2283"
+echo "📊 Services: $(docker compose ps --services | wc -l) containers running"

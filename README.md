@@ -1,48 +1,46 @@
-gunzip < /Volumes/SanDisk/immich/postgres_backups/YOUR_BACKUP_FILE.sql.gz | docker exec -i immich_postgres psql -U postgres -d immich
-gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docker exec -i immich_postgres psql -U postgres -d immich
 # 📸 Immich Self-Hosted (External Drive Setup)
 
-This repository provides a small, portable setup for running Immich on macOS using Docker/Colima with data stored on an external drive.
+Portable photo server setup for macOS using Docker/Colima with all data on an external drive.
 
 ## 🛠 Prerequisites
 
-- Docker Desktop or Colima (Colima recommended for macOS).
-- External drive (example: SanDisk) mounted at `/Volumes/SanDisk`.
-- Copy `.env.example` to `.env` and fill values before starting.
+- **Colima** (recommended) or Docker Desktop
+- External drive mounted at `/Volumes/SanDisk` (or update paths in `.env`)
+- Copy `.env.example` to `.env` and fill in your values
 
 ## 🔐 Security & Credentials
 
-- `.env` — contains runtime secrets; do NOT commit this file.
-- `.env.example` — template for required values.
-- `CREDENTIALS.md` — how to securely store and rotate credentials.
+- `.env` — runtime secrets (DO NOT commit; already in `.gitignore`)
+- `.env.example` — template with required fields
+- `CREDENTIALS.md` — password encryption and rotation guidance
 
-Notes:
-- Use a strong password (16+ characters, mixed case, numbers, symbols).
-- If your password contains a dollar sign (`$`), escape it as `$$` in `.env` so Docker Compose treats it literally.
+**Important**: 
+- Use a strong password (16+ chars, mixed case, numbers, symbols)
+- If your password contains `$`, escape it as `$$` in `.env` for Docker Compose
 
-## Quick Start
+## ⚡ Quick Start
 
-1. Ensure your external drive is connected and mounted at `/Volumes/SanDisk`.
-2. Create `.env` from `.env.example` and set your values.
-3. Start Immich and restore the latest backup (if present):
+1. Plug in external drive (mounted at `/Volumes/SanDisk`)
+2. Copy `.env.example` to `.env` and update values
+3. Start services and restore latest backup (if available):
 
 ```bash
 ./start.sh
 ```
 
-This helper will:
-- Ensure upload and backup folders exist on the external drive
-- Start the database and wait until it is healthy
-- Restore the latest backup from the drive (if available)
-- Start the remaining services
+**What `start.sh` does:**
+- Ensures upload and backup directories exist with correct permissions
+- Starts the database and waits for it to be ready
+- Restores latest backup from the drive (if present)
+- Starts remaining services
 
-To stop services and save a timestamped backup to the external drive:
+To stop services and save a timestamped backup:
 
 ```bash
 ./stop.sh
 ```
 
-## Manual Migration / Restore
+## Manual Setup / Restore
 
 Start only the database:
 
@@ -50,13 +48,13 @@ Start only the database:
 docker compose up -d database
 ```
 
-Quick restore (if backup is gzipped):
+Quick restore (backup is usually gzipped):
 
 ```bash
 gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docker exec -i immich_postgres psql -U postgres -d immich
 ```
 
-Full restore (use when schema/constraint issues occur):
+Full restore (recommended when moving to a new Mac or rebuild from scratch):
 
 ```bash
 docker-compose down && \
@@ -68,33 +66,52 @@ gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docke
 docker-compose up -d
 ```
 
-If you see constraint/role errors during restore, the full restore path recreates an empty database first and usually resolves them.
+> Constraint/role errors during restore are usually resolved by the full restore path, which recreates an empty database first.
 
-## Troubleshooting & Notes
+## ⚠️ Troubleshooting
 
-- If Docker/Colima cannot mount `/Volumes/SanDisk`, start Colima with mounts enabled:
+### Colima Mount Issues
+
+If you see `not a directory` or mount permission errors:
 
 ```bash
+# Restart Colima with write access to /Volumes
+colima stop
 colima start --mount /Volumes:w --mount-type 9p
+docker compose up -d
 ```
 
-- Manual backup trigger (if backup service is running):
+> Note: `9p` is only available with QEMU; Colima on Apple Silicon uses `virtiofs` automatically.
+
+### Manual Backup
+
+To trigger a backup immediately (if the backup service is running):
 
 ```bash
 docker exec immich_db_backup /backup.sh
 ```
 
-## Backup Configuration
+### View Logs
 
-- Backup Frequency: every 4 hours (in `docker-compose.yml` via `SCHEDULE`).
-- Retention: 7 days (`BACKUP_KEEP_DAYS`).
-- Backup Path: `/Volumes/SanDisk/immich/postgres_backups/` with latest symlink at `/Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql`.
+```bash
+# Server logs
+docker logs -f immich_server
 
-## Files of interest
+# Database logs
+docker logs -f immich_postgres
+```
 
-- `docker-compose.yml` — services and backup job
-- `.env` / `.env.example` — runtime config
+## 📋 Backup Details
+
+- **Frequency**: Every 4 hours (configured in `docker-compose.yml`)
+- **Retention**: 7 days
+- **Location**: `/Volumes/SanDisk/immich/postgres_backups/`
+- **Latest**: `/Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql`
+
+## 📁 Project Files
+
+- `docker-compose.yml` — service definitions and backup job configuration
+- `.env` / `.env.example` — runtime environment variables
 - `start.sh` / `stop.sh` — helper scripts for portable startup/shutdown
-- `CREDENTIALS.md` — secure storage and rotation instructions
-
-Want me to run a quick lint/format check on this README or add a short Troubleshooting checklist for new machines?
+- `CREDENTIALS.md` — secure password storage and rotation guide
+- `README.md` — this file
