@@ -29,19 +29,29 @@ DB_PASSWORD=$(printf '%s' "$DB_PASSWORD_RAW" | sed 's/\$\$/\$/g')
 : "${UPLOAD_LOCATION:?UPLOAD_LOCATION not set in .env}"
 : "${BACKUP_LOCATION:?BACKUP_LOCATION not set in .env}"
 
+# Check if external drive is mounted, warn if not
+if [[ "$UPLOAD_LOCATION" == /Volumes/* ]]; then
+    DRIVE=$(echo "$UPLOAD_LOCATION" | cut -d'/' -f3)
+    if [ ! -d "/Volumes/$DRIVE" ]; then
+        echo "⚠️  Drive '/Volumes/$DRIVE' not mounted. Services may fail to start."
+        echo "📌 Connect the drive or update UPLOAD_LOCATION in .env to use local paths."
+        echo ""
+    fi
+fi
+
 echo "🔎 Ensuring mount paths exist: $UPLOAD_LOCATION and $BACKUP_LOCATION"
 sudo mkdir -p "$UPLOAD_LOCATION" "$BACKUP_LOCATION" 2>/dev/null || {
-    echo "❌ Failed to create directories. Check drive connection and permissions." >&2
-    exit 1
+    echo "⚠️  Could not create directories (drive may not be connected)." >&2
+    echo "    Will attempt to start with existing structure." >&2
 }
 sudo chmod -R 755 "$(dirname "$UPLOAD_LOCATION")" 2>/dev/null || true
 sudo chmod -R 755 "$UPLOAD_LOCATION" "$BACKUP_LOCATION" 2>/dev/null || true
 
 echo "🚀 Starting database container"
-docker compose up -d database 2>/dev/null || {
+if ! docker compose up -d database; then
     echo "❌ Failed to start database. Check docker-compose.yml." >&2
     exit 1
-}
+fi
 
 echo "⏳ Waiting for Postgres to accept connections..."
 RETRY=0
