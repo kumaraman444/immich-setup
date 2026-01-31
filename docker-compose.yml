@@ -3,7 +3,7 @@ services:
     container_name: immich_server
     image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
     volumes:
-      - ${UPLOAD_LOCATION}:/usr/src/app/upload
+      - /Volumes/SanDisk/immich/upload:/usr/src/app/upload
       - /etc/localtime:/etc/localtime:ro
     env_file:
       - .env
@@ -12,8 +12,10 @@ services:
     ports:
       - "2283:2283"
     depends_on:
-      - redis
-      - database
+      database:
+        condition: service_healthy # Waits for the DB to be fully ready
+      redis:
+        condition: service_started
     restart: always
 
   immich-machine-learning:
@@ -37,12 +39,35 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_DB: ${DB_DATABASE_NAME}
-      POSTGRES_INITDB_ARGS: "--data-checksums"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-    shm_size: 128mb
+      - postgres-data:/var/lib/postgresql/data # Internal & Fast
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 10s
+      retries: 5
+
+  # New Backup Service
+  db-backup:
+    container_name: immich_db_backup
+    image: prodrigestivill/postgres-backup-local:14
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - /Volumes/SanDisk/immich/postgres_backups:/backups
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: database
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      SCHEDULE: "@daily" # Backs up every day at midnight
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_SUFFIX: .sql
 
 volumes:
+  postgres-data: # This lives on your Mac's internal drive
   model-cache:
-  postgres-data:

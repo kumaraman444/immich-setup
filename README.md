@@ -1,81 +1,86 @@
-# Immich Setup (Mac + Colima + External Drive)
+📸 Immich Self-Hosted (External Drive Setup)
 
-This repository contains the configuration for a self-hosted Immich instance running on macOS using Colima and an external SandDisk drive for photo storage.
-## 🚀 Quick Start
-#### 1. Initialize Colima
+This repository contains the configuration for running Immich on macOS using Colima and storing all data on an external SanDisk drive.
+🛠 Prerequisites
 
-Since the photo library is on an external drive, you must start Colima with the /Volumes folder mounted and writable. Run this command on your Mac terminal:
-Bash
+    Docker Desktop or Colima: (Colima is recommended for performance on macOS).
 
-colima start --mount /Volumes:w
+    External Drive: SanDisk (or any drive) formatted for Mac, mounted at /Volumes/SanDisk.
 
-#### 2. Prepare Directory Permissions
+    Folder Structure: Create the base folder: /Volumes/SanDisk/immich/upload.
 
-Inside the Colima VM, the folder must be accessible by the Docker containers.
-Bash
+🚀 First-Time Setup
+1. Initialize Colima
 
-colima ssh "sudo mkdir -p /Volumes/SandDisk/immich/library && sudo chmod -R 777 /Volumes/SandDisk/immich"
+Ensure Colima is started with write permissions for your external drive:
+```bash
+colima start --mount /Volumes:w --mount-type 9p
+```
+2. Configure Environment
 
-#### 3. Launch Immich
+Create a .env file in this directory and populate it with your credentials:
+
+    DB_PASSWORD: A strong password for Postgres.
+
+    DB_USERNAME: Your DB user (e.g., postgres).
+
+    DB_DATABASE_NAME: Your DB name (e.g., immich).
+
+    IMMICH_VERSION: Set to release.
+
+3. Launch Immich
 ```bash
 docker compose up -d
 ```
+Access the UI at: http://localhost:2283
+🔄 Migration (Restoring from Backup)
 
+If you move to a new machine or need to rebuild your stack, follow these steps to restore your data from your SanDisk backups.
+Step 1: Prepare the New Environment
 
-Access the dashboard at: http://localhost:2283
-📂 File Structure
-.env
+    Plug your SanDisk drive into the new machine.
+
+    Install Colima/Docker.
+
+    Ensure your docker-compose.yml and .env files are present.
+
+Step 2: Start Only the Database
+
+We need the database running but "empty" before we can pour the backup into it.
 ```bash
-IMMICH_VERSION=release
+docker compose up -d database
 ```
+Step 3: Run the Restore Command
 
-# Path verified inside Colima VM
-UPLOAD_LOCATION=/Volumes/SandDisk/immich/library
+Locate your latest backup file in /Volumes/SanDisk/immich/postgres_backups/. Use the following command to restore (replace YOUR_BACKUP_FILE.sql.gz with your actual filename):
+Bash
 
-# Database credentials
-DB_PASSWORD=postgres
-DB_USERNAME=postgres
-DB_DATABASE_NAME=immich
+# Unzip the backup first
+gunzip < /Volumes/SanDisk/immich/postgres_backups/YOUR_BACKUP_FILE.sql.gz | docker exec -i immich_postgres psql -U postgres -d immich
+
+Step 4: Start Everything Else
+
+Once the database is restored, start the rest of the services:
 ```bash
-docker-compose.yml
+docker compose up -d
 ```
+⚠️ Troubleshooting & Maintenance
+Permission Issues (macOS)
 
-Includes the IMMICH_DISABLE_CHOWN: "true" flag to prevent permission errors common with external drives on macOS.
-## 🔄 Migration Guide (Moving to a New Mac)
+If the server crashes with "Permission Denied" or "Folder Check" errors:
 
-To move this setup to a different computer while keeping all your users, albums, and faces:
-#### Phase 1: On the Old Mac
+    Check your .env for IMMICH_IGNORE_MOUNT_CHECK_ERRORS=true.
 
-Back up the database to your SandDisk:
-    
+    Ensure you used the :w flag when starting Colima.
+
+Manual Backup
+
+The system backs up daily to your SanDisk. To run one manually now:
 ```bash
-docker exec -t immich_postgres pg_dumpall --clean --if-exists --username=postgres | gzip > /Volumes/SandDisk/immich/immich-db-backup.sql.gz
+docker exec immich_db_backup /backup.sh
 ```
-Copy your config files (.env and docker-compose.yml) to the SandDisk or a cloud drive.
+Checking Logs
 
-#### Phase 2: On the New Mac
-
-* Install Colima & Docker.
-* Plug in the SandDisk.
-* Start Colima with the volume mount: colima start --mount /Volumes:w.
-* Place your config files in a new folder and run docker compose up -d.
-
-Restore the database:
 ```bash
-gunzip < /Volumes/SandDisk/immich/immich-db-backup.sql.gz | docker exec -i immich_postgres psql --username=postgres
+docker logs -f immich_server
 ```
-
-
-Restart the containers:
-```bash
-    docker compose restart
-```
-## 🛠 Troubleshooting
-
-    Storage reporting 57 TiB: This is a cosmetic bug in Colima's file-sharing system. It does not affect actual storage.
-
-    Permission Denied: Run the chmod -R 777 command inside colima ssh again.
-
-    Database failing: Ensure the postgres-data volume is on the Mac's internal drive (SSD) for performance.
-
-For a visual walkthrough on managing these database dumps and understanding how Postgres handles users during a move, you can check out this Immich backup and restore guide. This video is helpful because it explains the specific pg_dumpall logic used in your migration process.
