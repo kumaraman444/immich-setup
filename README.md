@@ -84,3 +84,11 @@ Checking Logs
 ```bash
 docker logs -f immich_server
 ```
+
+## ⏪ How to Restore the Database
+1. **Stop Immich Server**:
+   `docker stop immich_server`
+
+2. **Restore Command**:
+   ```bash
+   gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docker exec -i immich_postgres psql -U postgres -d immich
