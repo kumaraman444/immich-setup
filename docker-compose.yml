@@ -64,8 +64,8 @@ services:
       POSTGRES_DB: ${DB_DATABASE_NAME}
       POSTGRES_USER: ${DB_USERNAME}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      SCHEDULE: "@daily" # Backs up every day at midnight
-      BACKUP_KEEP_DAYS: 7
+      SCHEDULE: "0 */4 * * *" # Backs up every 4 hours
+      BACKUP_KEEP_DAYS: 7 # Automatically removes backups older than 7 days
       BACKUP_SUFFIX: .sql
 
 volumes:
