@@ -9,6 +9,26 @@ This repository contains the configuration for running Immich on macOS using Col
 
     Folder Structure: Create the base folder: /Volumes/SanDisk/immich/upload.
 
+## 🔐 Security & Credentials
+
+**IMPORTANT**: This repository includes credentials management files.
+
+- **`.env`**: Contains your database password. **NEVER commit this to git**. It's already in `.gitignore`.
+- **`.env.example`**: Template for creating your own `.env` file.
+- **`CREDENTIALS.md`**: Comprehensive guide for securely managing passwords, encryption, and backups.
+
+**Quick Security Checklist**:
+1. ✅ Verify `.env` is in `.gitignore`
+2. ✅ Use a strong password (16+ chars, mixed case, numbers, symbols)
+3. ✅ Encrypt sensitive files for cloud backup (see `CREDENTIALS.md`)
+4. ✅ Keep backup drive encrypted (FileVault 2 on Mac)
+
+**See `CREDENTIALS.md` for**:
+- Encrypting your credentials (GPG, OpenSSL, git-crypt)
+- Password rotation schedules
+- Compromised credentials recovery
+- Secure setup on new machines
+
 🚀 First-Time Setup
 1. Initialize Colima
 
@@ -53,10 +73,11 @@ docker compose up -d database
 Step 3: Run the Restore Command
 
 Locate your latest backup file in /Volumes/SanDisk/immich/postgres_backups/. Use the following command to restore (replace YOUR_BACKUP_FILE.sql.gz with your actual filename):
-Bash
 
+```bash
 # Unzip the backup first
 gunzip < /Volumes/SanDisk/immich/postgres_backups/YOUR_BACKUP_FILE.sql.gz | docker exec -i immich_postgres psql -U postgres -d immich
+```
 
 Step 4: Start Everything Else
 
@@ -84,3 +105,45 @@ Checking Logs
 ```bash
 docker logs -f immich_server
 ```
+
+## ⏪ How to Restore the Database
+
+### Full Restore (Recommended - Use When Moving to Another Mac)
+
+This command stops all services, drops the existing database, recreates it, restores the latest backup, and restarts everything:
+
+```bash
+docker-compose down && \
+docker-compose up -d database && \
+sleep 15 && \
+docker exec immich_postgres psql -U postgres -c "DROP DATABASE IF EXISTS immich" && \
+docker exec immich_postgres psql -U postgres -c "CREATE DATABASE immich" && \
+gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docker exec -i immich_postgres psql -U postgres -d immich && \
+docker-compose up -d
+```
+
+**Step-by-step what this does:**
+1. Stops all containers
+2. Starts only the database container
+3. Waits 15 seconds for the database to be ready
+4. Drops the existing immich database (if it exists)
+5. Creates a fresh immich database
+6. Restores the latest backup from your SanDisk drive
+7. Restarts all services
+
+### Quick Restore (Use When Database is Running)
+
+If you only want to restore without dropping and recreating:
+
+```bash
+gunzip < /Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql | docker exec -i immich_postgres psql -U postgres -d immich
+```
+
+**Note:** This may fail if there are constraint conflicts. Use the full restore in that case.
+
+## 📋 Backup Configuration
+
+- **Backup Frequency**: Every 4 hours (`SCHEDULE: "0 */4 * * *"`)
+- **Retention**: Backups are automatically kept for 7 days (`BACKUP_KEEP_DAYS: 7`)
+- **Backup Location**: `/Volumes/SanDisk/immich/postgres_backups/`
+- **Latest Symlink**: `/Volumes/SanDisk/immich/postgres_backups/last/immich-latest.sql`
